@@ -1,19 +1,19 @@
-% 排队系统模拟与分析
-% 基于马尔可夫链的多队列系统仿真
+% Queueing System Simulation and Analysis
+% Multi-Queue System Simulation Based on Markov Chain
 
 % ====================
-% 1. 参数设置（可修改）
+% 1. Parameter Settings (Modifiable)
 % ====================
-NUM_QUEUES = 5;  % 队列数
-MAX_QUEUE_LENGTH = 5;  % 每列最大人数
-ARRIVAL_PROB = 0.8;  % 每单位时间有顾客到达的概率 λ
-CHOOSE_SMART_PROB = 0.9;  % 顾客选择最短队列的概率 p
-SERVICE_PROB = 0.07;  % 每列每单位时间服务前端顾客的概率 μ
+NUM_QUEUES = 5;  % Number of queues
+MAX_QUEUE_LENGTH = 5;  % Maximum number of customers per queue
+ARRIVAL_PROB = 0.8;  % Probability of customer arrival per time unit λ
+CHOOSE_SMART_PROB = 0.9;  % Probability of choosing shortest queue p
+SERVICE_PROB = 0.07;  % Probability of serving front customer per time unit μ
 
 % ================================
-% 2. 枚举所有状态 & 建立索引映射
+% 2. Enumerate All States & Build Index Mapping
 % ================================
-% 生成所有可能的状态组合
+% Generate all possible state combinations
 states = {};
 index = 1;
 for q1 = 0:MAX_QUEUE_LENGTH
@@ -29,13 +29,13 @@ for q1 = 0:MAX_QUEUE_LENGTH
     end
 end
 
-N = length(states);  % 总状态数 = (MAX_QUEUE_LENGTH+1)^NUM_QUEUES = 6^5 = 7776
+N = length(states);  % Total number of states = (MAX_QUEUE_LENGTH+1)^NUM_QUEUES = 6^5 = 7776
 
 % ========================
-% 辅助函数
+% Helper Functions
 % ========================
 
-% 获取最短队列的索引
+% Get indices of shortest queues
 function shortest_idxs = get_shortest_queues(state)
     min_len = min(state);
     shortest_idxs = find(state == min_len);
@@ -47,11 +47,11 @@ function next_state = add_customer(state, queue_idx)
         next_state = state;
         next_state(queue_idx) = next_state(queue_idx) + 1;
     else
-        next_state = [];  % 队列已满
+        next_state = [];  % Queue is full
     end
 end
 
-% 服务函数：返回所有可能的服务结果及其概率
+% Service function: returns all possible service results and their probabilities
 function [next_states, probs] = serve(state)
     masks = dec2bin(0:2^NUM_QUEUES-1) - '0';  % 生成所有可能的服务组合
     next_states = cell(size(masks, 1), 1);
@@ -77,7 +77,7 @@ function [next_states, probs] = serve(state)
 end
 
 % =====================================
-% 3. 构造稀疏转移矩阵 P（N×N）
+% 3. Construct Sparse Transition Matrix P (N×N)
 % =====================================
 % 创建状态到索引的映射函数
 state_to_index = containers.Map('KeyType', 'char', 'ValueType', 'double');
@@ -97,20 +97,18 @@ for i = 1:N
     for k = 1:length(service_results)
         s1 = service_results{k};
         p1 = service_probs(k);
-        
-        % ── 情况 1：本步没有顾客到达（概率 = 1 - ARRIVAL_PROB）
+          % -- Case 1: No customer arrival in this step (probability = 1 - ARRIVAL_PROB)
         s1_str = sprintf('%d,%d,%d,%d,%d', s1);
         idx_s1 = state_to_index(s1_str);
         P(idx_s1, i) = P(idx_s1, i) + p1 * (1 - ARRIVAL_PROB);
         
-        % ── 情况 2：本步有顾客到达（概率 = ARRIVAL_PROB）
+        % -- Case 2: Customer arrival in this step (probability = ARRIVAL_PROB)
         shortest_idxs = get_shortest_queues(s1);
         num_short = length(shortest_idxs);
         num_other = NUM_QUEUES - num_short;
         
-        for q_idx = 1:NUM_QUEUES
-            if s1(q_idx) == MAX_QUEUE_LENGTH
-                continue;  % 该列已满
+        for q_idx = 1:NUM_QUEUES            if s1(q_idx) == MAX_QUEUE_LENGTH
+                continue;  % This queue is full
             end
             
             if ismember(q_idx, shortest_idxs)
@@ -134,63 +132,61 @@ for i = 1:N
 end
 
 % =============================================
-% 4. 幂迭代计算稳态分布 π：π = π P，π 长度 = N
+% 4. Power Iteration to Calculate Steady State Distribution π: π = π P, π length = N
 % =============================================
-% 初始化为均匀分布
+% Initialize with uniform distribution
 pi = ones(N, 1) / N;
 
 max_iters = 5000;
 tol = 1e-12;
 
-for it = 1:max_iters
-    pi_next = P' * pi;  % 注意MATLAB中矩阵乘法是左乘
+for it = 1:max_iters    pi_next = P' * pi;  % Note: Matrix multiplication in MATLAB is left multiplication
     pi_next_sum = sum(pi_next);
     if pi_next_sum <= 0
-        error('迭代过程中概率向量和为 0，可能参数选择不当。');
+        error('Probability vector sum is 0 during iteration, parameters may be inappropriate.');
     end
-    pi_next = pi_next / pi_next_sum;  % 归一化
+    pi_next = pi_next / pi_next_sum;  % Normalization
     diff = norm(pi_next - pi, 1);
     pi = pi_next;
-    if diff < tol
-        fprintf('幂迭代在迭代 %d 步后收敛，L1 差值 = %.2e\n', it, diff);
+    if diff < tol        fprintf('Power iteration converged after %d iterations, L1 difference = %.2e\n', it, diff);
         break;
     end
 end
 
 if it == max_iters
-    fprintf('警告：迭代达到了最大步数 %d，但尚未完全收敛，最后 L1 差值 = %.2e\n', max_iters, diff);
+    fprintf('Warning: Reached maximum iterations %d without full convergence, final L1 difference = %.2e\n', max_iters, diff);
 end
 
 % =============================
-% 5. 计算并输出性能指标
+% 5. Calculate and Output Performance Metrics
 % =============================
-% 5.1 系统中平均总排队人数
+% 5.1 Average total number of customers in the system
 queue_lengths = cellfun(@sum, states);
 average_total_queue = dot(pi, queue_lengths);
-fprintf('\n平均系统总排队人数（5 列之和）≈ %.4f\n', average_total_queue);
+fprintf('\nAverage total number of customers in system (sum of 5 queues) ≈ %.4f\n', average_total_queue);
 
-% 5.2 平均每列排队人数
+% 5.2 Average number of customers in each queue
 avg_each_column = zeros(NUM_QUEUES, 1);
 for col_idx = 1:NUM_QUEUES
     col_length_vector = cellfun(@(x) x(col_idx), states);
     avg_each_column(col_idx) = dot(pi, col_length_vector);
-    fprintf('第 %d 列 平均排队人数 ≈ %.4f\n', col_idx, avg_each_column(col_idx));
+    fprintf('Queue %d average number of customers ≈ %.4f\n', col_idx, avg_each_column(col_idx));
 end
 
-% 5.3 输出概率最大的状态
+% 5.3 Output states with highest probabilities
 top_k = 10;
 [~, top_indices] = sort(pi, 'descend');
 top_indices = top_indices(1:top_k);
-fprintf('\n概率最高的 %d 个状态：\n', top_k);
+fprintf('\nTop %d states with highest probabilities:\n', top_k);
 for idx = 1:top_k
     state_str = sprintf('(%d,%d,%d,%d,%d)', states{top_indices(idx)});
     fprintf('  %s  :  %.6e\n', state_str, pi(top_indices(idx)));
 end
 
 % =============================
-% 6. 绘制转移矩阵热力图
+% 6. Draw Transition Matrix Heatmap
 % =============================
-fprintf('\n开始绘制转移矩阵热力图...\n');
+fprintf('\nStarting to draw transition matrix heatmap...\n');
 
 % 降采样参数
 downsample_factor = 4;
@@ -227,15 +223,14 @@ for i = 1:chunk_size:target_size
                 end
             end
         end
-        
-        fprintf('处理进度: %.1f%%\r', ...
+          fprintf('Processing progress: %.1f%%\r', ...
             ((floor(i/chunk_size)*target_size + floor(j/chunk_size)) / (ceil(target_size/chunk_size))^2 * 100));
     end
 end
 
-fprintf('\n降采样完成，开始绘制...\n');
+fprintf('\nDownsampling completed, starting to plot...\n');
 
-% 创建热力图
+% Create heatmap
 figure('Position', [100 100 1000 1000]);
 P_log = log10(P_downsampled + 1e-10);
 imagesc(P_log);
@@ -256,22 +251,22 @@ set(gca, 'YTick', tick_indices, 'YTickLabel', tick_labels);
 
 saveas(gcf, 'complete_transition_matrix_heatmap.fig');
 saveas(gcf, 'complete_transition_matrix_heatmap.png');
-fprintf('完整转移矩阵热力图已保存\n');
+fprintf('Complete transition matrix heatmap saved\n');
 
-% 输出统计信息
-fprintf('\n转移矩阵统计信息：\n');
-fprintf('矩阵大小: %d×%d\n', N, N);
-fprintf('非零元素数量: %d\n', nnz(P));
-fprintf('稀疏性: %.4f%%\n', nnz(P)/(N*N)*100);
-fprintf('最大转移概率: %.6f\n', max(P(:)));
-fprintf('最小非零转移概率: %.6f\n', min(P(P>0)));
+% Output statistics
+fprintf('\nTransition matrix statistics:\n');
+fprintf('Matrix size: %d×%d\n', N, N);
+fprintf('Number of non-zero elements: %d\n', nnz(P));
+fprintf('Sparsity: %.4f%%\n', nnz(P)/(N*N)*100);
+fprintf('Maximum transition probability: %.6f\n', max(P(:)));
+fprintf('Minimum non-zero transition probability: %.6f\n', min(P(P>0)));
 
 % =============================
-% 7. 计算顾客等待时间分布
+% 7. Calculate Customer Waiting Time Distribution
 % =============================
 avg_service_time = 1.0 / SERVICE_PROB;
 
-% 计算选择概率分布函数
+% Function to compute choice probability distribution
 function probs = compute_choice_probabilities(state, p_smart)
     shortest_idxs = get_shortest_queues(state);
     num_short = length(shortest_idxs);
@@ -287,7 +282,7 @@ function probs = compute_choice_probabilities(state, p_smart)
     end
 end
 
-% 计算等待时间分布
+% Calculate waiting time distribution
 waiting_time_prob = containers.Map('KeyType', 'double', 'ValueType', 'double');
 
 for idx = 1:N
@@ -308,7 +303,7 @@ for idx = 1:N
     end
 end
 
-% 归一化
+% Normalization
 wait_times = cell2mat(keys(waiting_time_prob));
 probs = cell2mat(values(waiting_time_prob));
 total_prob = sum(probs);
@@ -316,19 +311,19 @@ for k = wait_times
     waiting_time_prob(k) = waiting_time_prob(k) / total_prob;
 end
 
-% 排序并输出等待时间分布
+% Sort and output waiting time distribution
 [wait_times_sorted, idx] = sort(wait_times);
 probs_sorted = probs(idx);
 
-fprintf('\n等待时间（单位：平均服务时间倍数）及对应概率：\n');
+fprintf('\nWaiting time (in multiples of average service time) and corresponding probabilities:\n');
 for i = 1:length(wait_times_sorted)
-    fprintf('等待时间 %.2f ：概率 %.6f\n', wait_times_sorted(i), probs_sorted(i));
+    fprintf('Waiting time %.2f : probability %.6f\n', wait_times_sorted(i), probs_sorted(i));
 end
 
 % ======================
-% 8. 绘制稳态分布π的分析图
+% 8. Draw Analysis Plots for Steady-State Distribution π
 % ======================
-fprintf('\n开始绘制稳态分布π的分析图...\n');
+fprintf('\nStarting to draw analysis plots for steady-state distribution π...\n');
 
 figure('Position', [100 100 1200 800]);
 
@@ -378,23 +373,23 @@ saveas(gcf, 'pi_distribution_analysis.fig');
 saveas(gcf, 'pi_distribution_analysis.png');
 
 % 统计分析输出
-fprintf('\n稳态分布π的统计分析：\n');
-fprintf('π向量总和: %.10f\n', sum(pi));
-fprintf('π最大值: %.6e\n', max(pi));
-fprintf('π最小值: %.6e\n', min(pi));
-fprintf('π平均值: %.6e\n', mean(pi));
-fprintf('π标准差: %.6e\n', std(pi));
+fprintf('\nStatistical analysis of steady-state distribution π:\n');
+fprintf('Sum of π vector: %.10f\n', sum(pi));
+fprintf('Maximum π value: %.6e\n', max(pi));
+fprintf('Minimum π value: %.6e\n', min(pi));
+fprintf('Mean π value: %.6e\n', mean(pi));
+fprintf('Standard deviation of π: %.6e\n', std(pi));
 
 % 计算概率集中度
 states_for_50 = find(cumulative_prob >= 0.5, 1);
 states_for_90 = find(cumulative_prob >= 0.9, 1);
 states_for_99 = find(cumulative_prob >= 0.99, 1);
 
-fprintf('\n概率集中度分析：\n');
-fprintf('前 %d 个状态占总概率的50%%\n', states_for_50);
-fprintf('前 %d 个状态占总概率的90%%\n', states_for_90);
-fprintf('前 %d 个状态占总概率的99%%\n', states_for_99);
-fprintf('总状态数: %d\n', N);
+fprintf('\nProbability concentration analysis:\n');
+fprintf('First %d states account for 50%% of total probability\n', states_for_50);
+fprintf('First %d states account for 90%% of total probability\n', states_for_90);
+fprintf('First %d states account for 99%% of total probability\n', states_for_99);
+fprintf('Total number of states: %d\n', N);
 
 % ======================
 % 9. 绘制等待时间概率分布
